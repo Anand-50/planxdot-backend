@@ -6,7 +6,8 @@ from django.conf import settings
 from django.utils.timezone import now
 from django.views.decorators.csrf import csrf_exempt
 
-
+from analytics.models import AnalyticsPayment
+from analytics.services import log_funnel
 
 from .models import Plan, Payment, Subscription
 from accounts.models import User
@@ -55,12 +56,15 @@ def verify_payment(request):
     razorpay_order_id = data['order_id']
     user_id = data['user_id']
 
+    # 1️⃣ Mark payment success
     payment = Payment.objects.get(razorpay_order_id=razorpay_order_id)
     payment.status = "success"
     payment.save()
 
     plan = payment.plan
+    user = User.objects.get(id=user_id)
 
+    # 2️⃣ Create subscription
     Subscription.objects.create(
         user_id=user_id,
         plan=plan,
@@ -69,6 +73,23 @@ def verify_payment(request):
         status="active"
     )
 
+    # 3️⃣ Activate user
     User.objects.filter(id=user_id).update(subscription_status="active")
+
+  
+    # 4️⃣ Revenue analytics
+    AnalyticsPayment.objects.create(
+        user_id=user.id,
+        plan_name=plan.name,
+        amount=payment.amount,
+        status="success"
+    )
+
+    # 5️⃣ Funnel analytics
+    log_funnel(
+        user.id,
+        user.role,
+        "payment_success"
+    )
 
     return JsonResponse({"message": "Subscription activated"})

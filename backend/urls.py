@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
 
+
 from rest_framework_simplejwt.views import TokenRefreshView
 
 
@@ -12,6 +13,9 @@ urlpatterns = [
     path("api/adminpanel/", include("adminpanel.urls")),
     path("api/token/refresh/", TokenRefreshView.as_view()),
     path("api/chat/", include("chat.urls")),
+    path("api/reports/", include("reports.urls")),
+   
+
 
 ]
 # path('api/admin/', include('adminpanel.urls')),

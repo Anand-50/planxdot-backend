@@ -14,6 +14,8 @@ from .models import (
     UserChatSettings
 )
 
+from analytics.services import log_event
+from analytics.models import AnalyticsChatMetric
 
 
 
@@ -85,13 +87,29 @@ def send_message(request, thread_id):
     ChatMessage.objects.create(
         thread=thread,
         sender_id=user.id,
-        message_type=data["message_type"],  # text / file / voice / image
+        message_type=data["message_type"],
         content=data.get("content"),
         file_name=data.get("file_name"),
         file_type=data.get("file_type")
     )
 
+    # 🔹 ANALYTICS — CHAT MESSAGE
+    AnalyticsChatMetric.objects.create(
+        thread_id=thread.id,
+        sender_id=user.id,
+        message_type=data["message_type"]
+    )
+
+    log_event(
+        user_id=user.id,
+        role=user.role,
+        event_type="chat_message",
+        target_type="chat",
+        target_id=thread.id
+    )
+
     return JsonResponse({"message": "Message sent"})
+
 
 
 def list_messages(request, thread_id):

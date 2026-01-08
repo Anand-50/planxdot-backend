@@ -10,6 +10,30 @@ import json
 from datetime import timedelta
 
 
+from adminpanel.services import (
+    users_kpi,
+    subscription_kpi,
+    content_kpi,
+    reports_kpi
+)
+from adminpanel.permissions import require_permission
+from adminpanel.utils import get_admin_from_token
+from django.http import JsonResponse
+
+from reports.models import Report
+from adminpanel.permissions import require_permission
+
+
+# 🔹 ANALYTICS IMPORTS (ADD BELOW OTHER IMPORTS)
+from analytics.models import (
+    AnalyticsEvent,
+    AnalyticsFunnel
+)
+
+from django.db.models import Count
+
+
+
 @csrf_exempt
 def suspend_user(request, user_id):
     admin = get_admin_from_token(request)
@@ -144,3 +168,129 @@ def freeze_chat(request, thread_id):
 
 
     return JsonResponse({"message": "Chat frozen"})
+
+
+
+def admin_dashboard(request):
+    admin = get_admin_from_token(request)
+
+    # Only high-level admins
+    require_permission(admin, "VIEW_DASHBOARD")
+
+    return JsonResponse({
+        "users": users_kpi(),
+        "subscriptions": subscription_kpi(),
+        "content": content_kpi(),
+        "reports": reports_kpi(),
+        "generated_at": now()
+    })
+
+
+def list_reports(request):
+    admin = get_admin_from_token(request)
+    require_permission(admin, "VIEW_REPORTS")
+
+    status = request.GET.get("status")
+
+    qs = Report.objects.all().order_by("-created_at")
+
+    if status:
+        qs = qs.filter(status=status)
+
+    data = list(qs.values(
+        "id",
+        "target_type",
+        "reason",
+        "status",
+        "created_at"
+    ))
+
+    return JsonResponse(data, safe=False)
+
+
+def view_report(request, report_id):
+    admin = get_admin_from_token(request)
+    require_permission(admin, "VIEW_REPORTS")
+
+    report = Report.objects.filter(id=report_id).first()
+    if not report:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    return JsonResponse({
+        "id": str(report.id),
+        "target_type": report.target_type,
+        "target_id": str(report.target_id),
+        "reason": report.reason,
+        "description": report.description,
+        "status": report.status,
+        "admin_notes": report.admin_notes,
+        "created_at": report.created_at
+    })
+
+
+@csrf_exempt
+def update_report_status(request, report_id):
+    admin = get_admin_from_token(request)
+    require_permission(admin, "MANAGE_REPORTS")
+
+    data = json.loads(request.body)
+
+    status = data.get("status")
+    notes = data.get("admin_notes", "")
+
+    report = Report.objects.filter(id=report_id).first()
+    if not report:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    report.status = status
+    report.admin_notes = notes
+    report.save()
+
+    AdminAuditLog.objects.create(
+        admin_id=admin.id,
+        action="REPORT_STATUS_UPDATED",
+        target_type="report",
+        target_id=report.id,
+        reason=notes
+    )
+
+    return JsonResponse({"message": "Report updated"})
+
+
+
+# ===========================
+# 📊 ADMIN ANALYTICS
+# ===========================
+
+def analytics_overview(request):
+    admin = get_admin_from_token(request)
+    require_permission(admin, "VIEW_ANALYTICS")
+
+    events_today = AnalyticsEvent.objects.filter(
+        created_at__date=now().date()
+    ).count()
+
+    top_events = (
+        AnalyticsEvent.objects
+        .values("event_type")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:10]
+    )
+
+    return JsonResponse({
+        "events_today": events_today,
+        "top_events": list(top_events)
+    })
+
+
+def funnel_analytics(request):
+    admin = get_admin_from_token(request)
+    require_permission(admin, "VIEW_ANALYTICS")
+
+    data = (
+        AnalyticsFunnel.objects
+        .values("step")
+        .annotate(count=Count("id"))
+    )
+
+    return JsonResponse(list(data), safe=False)

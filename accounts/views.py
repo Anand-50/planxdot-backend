@@ -14,6 +14,8 @@ from .models import User
 from django.conf import settings
 
 
+from analytics.services import log_event, log_funnel
+
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -161,11 +163,31 @@ def login(request):
 
     tokens = get_tokens_for_user(user)
 
+
+
+    # ✅ ANALYTICS: LOGIN SUCCESS
+    log_event(
+        user_id=user.id,
+        role=user.role,
+        event_type="login",
+        target_type="user",
+        target_id=user.id,
+        ip=request.META.get("REMOTE_ADDR"),
+        device=request.META.get("HTTP_USER_AGENT")
+    )
+
+    log_funnel(
+        user_id=user.id,
+        role=user.role,
+        step="login_success"
+    )
+
     return JsonResponse({
         "message": "Login success",
         "access_token": tokens['access'],
         "refresh_token": tokens['refresh']
     })
+
 
 
 from accounts.utils import get_user_from_token

@@ -1,7 +1,7 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from adminpanel.models import AdminUser
 
-from adminpanel.permissions import ROLE_PERMISSIONS
+
 
 
 def get_admin_from_token(request):
@@ -25,12 +25,5 @@ def get_admin_from_token(request):
 
 
 
-def require_permission(admin, permission):
-    allowed = ROLE_PERMISSIONS.get(admin.role, [])
 
-    if "*" in allowed:
-        return
-
-    if permission not in allowed:
-        raise Exception("Permission denied")
 

@@ -33,6 +33,11 @@ import json
 from django.db.models import Count
 
 
+from analytics.services import log_event, log_funnel
+from analytics.models import AnalyticsChatMetric, AnalyticsPayment
+
+
+
 
 @csrf_exempt
 def create_post(request):
@@ -179,7 +184,6 @@ def feed(request):
 @csrf_exempt
 def accept_nda(request, post_id):
     user = get_user_from_token(request)
-
     post = Post.objects.get(id=post_id)
 
     if not post.nda_required:
@@ -194,12 +198,35 @@ def accept_nda(request, post_id):
         }
     )
 
+    # 📊 ANALYTICS
+    log_event(
+        user_id=user.id,
+        role=user.role,
+        event_type="nda_accept",
+        target_type="post",
+        target_id=post.id
+    )
+
+    log_funnel(user.id, user.role, "nda_accepted")
+
     return JsonResponse({"message": "NDA accepted"})
+
+    
 
 
 def view_post(request, post_id):
     user = get_user_from_token(request)
     post = Post.objects.get(id=post_id)
+    # 📊 ANALYTICS: Post View
+    log_event(
+        user_id=user.id,
+        role=user.role,
+        event_type="post_view",
+        target_type="post",
+        target_id=post.id,
+        ip=request.META.get("REMOTE_ADDR"),
+        device=request.META.get("HTTP_USER_AGENT")
+)
 
     # ---- NDA CHECK ----
     if post.nda_required:
@@ -292,18 +319,6 @@ def view_post(request, post_id):
         "details": details
     })
 
-# class EntrepreneurPostDetails(models.Model):
-#     post = models.OneToOneField(
-#         Post,
-#         on_delete=models.CASCADE,
-#         related_name="entrepreneur_details"
-#     )
-# class InvestorPostDetails(models.Model):
-#     post = models.OneToOneField(
-#         Post,
-#         on_delete=models.CASCADE,
-#         related_name="investor_details"
-#     )
 
 from django.views.decorators.csrf import csrf_exempt
 def discovery_feed(request):
